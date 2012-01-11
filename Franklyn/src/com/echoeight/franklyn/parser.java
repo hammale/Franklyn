@@ -1,19 +1,73 @@
 package com.echoeight.franklyn;
 
 import java.io.*;
-import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class parser {
+import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import javax.swing.*;
+
+public class parser implements ActionListener, Runnable {
 
 	private static final Pattern CHECK_LINK = Pattern.compile("^.+?<a href=");
 	private static final Pattern CHECK_LINK2 = Pattern.compile("<.+?");
 	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
 	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
+	
+	String urlinitial = "http://snippets.dzone.com/";
+	
+	JTextArea text;
+	JButton button;
+	boolean clear = true;
+	
+	public static void main (String[] args){
+		parser gui = new parser();
+		gui.go();
+	}
+	
+	public void go(){
+		JFrame frame = new JFrame();
+		JPanel panel = new JPanel();
+		button = new JButton("Start");
+		text = new JTextArea(40,40);
+		button.addActionListener(this);
+		text.setEditable(false);
+		
+		panel.add(text);
+		panel.add(button);
+		frame.add(BorderLayout.CENTER, panel);
+		
+		frame.setSize(40,100);
+		frame.setVisible(true);
+		
+	}
+	
+	public void actionPerformed(ActionEvent e) {
+		if(clear == true){
+			clear = false;
+			try {
+				
+			    Thread worker = new Thread(this);
+			    worker.start();  // this calls the method run()
+				
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		button.setText("Stop");
+		
+		}else{
+			Thread.currentThread().interrupt();
+			text.setText(null);
+			button.setText("Start");
+			clear = true;
+		}
+
+	}
+	
 	
 	private static Pattern htmltag;
 	private static Pattern link;
@@ -21,10 +75,12 @@ public class parser {
 	public static BufferedReader read(String url) throws Exception{
 		return new BufferedReader(
 			new InputStreamReader(
-				new URL(url).openStream()));}
+				new URL(url).openStream()));
+	}
 
-	public static void main (String[] args) throws Exception{
-		String urlinitial = "http://snippets.dzone.com/posts/show/3553";
+
+	public void startCrawl() throws Exception{
+		while(clear == false){
 		URL url = new URL(urlinitial);
 		String domain =  url.getHost();
 		domain = "http://" + domain;
@@ -50,12 +106,47 @@ public class parser {
 					end = end.replaceAll("\"", "");
 					end = end.replaceAll("class.+?", "");
 					end = end.replaceAll("tag.+?", "");
-					System.out.println(end);
+					if(checkDB(end)){
+						useLink(end);
+						urlinitial = end;
+						text.append(end);
+					}
 				}
 			}
 			//}
 			line = reader.readLine();
 		} 
+		}
+	}
+	
+	private void useLink(String s) throws ClassNotFoundException {
+
+		 Connection con = null;
+	        Statement st = null;
+
+	        String url = "jdbc:mysql://web02:3306/franklyn";
+	        String user = "root";
+	        String password = "r4pt0r";
+
+	        try {        	
+	        	Class.forName("com.mysql.jdbc.Driver");
+	            con = DriverManager.getConnection(url, user, password);
+	            st = con.createStatement();
+	            String query = "INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "')";
+	            st.executeUpdate(query);
+	            
+	        } catch (SQLException ex) {
+	        	ex.printStackTrace();
+
+	        } finally {
+	            try {
+	                    st.close();
+	                    con.close();
+
+	            } catch (SQLException ex) {
+	            	ex.printStackTrace();
+	            }
+	        }
 	}
 
 	private static boolean valid(String s) {
@@ -84,4 +175,63 @@ public class parser {
 		throw new RuntimeException("Cannot make the link absolute. Url: " + url
 				+ " Link " + link);
 	}
+	
+	
+    public boolean checkDB(String s) throws ClassNotFoundException{
+
+        Connection con = null;
+        Statement st = null;
+        ResultSet rs = null;
+
+        String url = "jdbc:mysql://web02:3306/franklyn";
+        String user = "root";
+        String password = "r4pt0r";
+
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+            Connection connection = null;
+            connection = DriverManager.getConnection("jdbc:mysql://www.db4free.net:3306/chatterbox", "hammale", "al3xander");
+            Statement statement = null;
+            statement = connection.createStatement();
+            String select = "SELECT * FROM `used` WHERE `url`=" + s;
+            String sql = select;
+            rs = statement.executeQuery(sql);
+            connection.close();
+            
+            if (rs.next()) {
+                //System.out.println(rs.getString(1));
+            	return false;
+            }
+
+            return true;
+            
+        } catch (SQLException ex) {
+        	ex.printStackTrace();
+
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close();
+                }
+                if (st != null) {
+                    st.close();
+                }
+                if (con != null) {
+                    con.close();
+                }
+
+            } catch (SQLException ex) {
+            	ex.printStackTrace();
+            }
+        }
+        return true;
+    }
+
+    public void run(){
+        try {
+			startCrawl();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+    }
 }
