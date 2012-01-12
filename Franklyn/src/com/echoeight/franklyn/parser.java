@@ -13,12 +13,12 @@ import javax.swing.*;
 
 public class parser implements ActionListener, Runnable {
 
-	private static final Pattern CHECK_LINK = Pattern.compile("^.+?<a href=");
-	private static final Pattern CHECK_LINK2 = Pattern.compile("<.+?");
-	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
-	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
+//	private static final Pattern CHECK_LINK = Pattern.compile("^.+?<a href=");
+//	private static final Pattern CHECK_LINK2 = Pattern.compile("<.+?");
+//	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
+//	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
 	
-	String urlinitial = "http://snippets.dzone.com/";
+	String urlinitial = "http://en.wikipedia.org/wiki/Main_Page";
 	
 	JTextArea text;
 	JButton button;
@@ -72,6 +72,8 @@ public class parser implements ActionListener, Runnable {
 	private static Pattern htmltag;
 	private static Pattern link;
 	
+	PreparedStatement pstmt;
+	
 	public static BufferedReader read(String url) throws Exception{
 		return new BufferedReader(
 			new InputStreamReader(
@@ -106,10 +108,12 @@ public class parser implements ActionListener, Runnable {
 					end = end.replaceAll("\"", "");
 					end = end.replaceAll("class.+?", "");
 					end = end.replaceAll("tag.+?", "");
-					if(checkDB(end)){
-						useLink(end);
-						urlinitial = end;
-						text.append(end);
+					end = end.replaceAll("title.+?", "");
+					String daend = end.substring(0, end.indexOf(" "));
+					if(checkDB(daend)){
+						useLink(daend);
+						urlinitial = daend;
+						text.append(daend);
 					}
 				}
 			}
@@ -131,16 +135,18 @@ public class parser implements ActionListener, Runnable {
 	        try {        	
 	        	Class.forName("com.mysql.jdbc.Driver");
 	            con = DriverManager.getConnection(url, user, password);
-	            st = con.createStatement();
-	            String query = "INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "')";
-	            st.executeUpdate(query);
+	            
+	            pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "\n" + "')");
+	            
+	            //String query = pstmt;
+	            pstmt.executeUpdate();
 	            
 	        } catch (SQLException ex) {
 	        	ex.printStackTrace();
 
 	        } finally {
 	            try {
-	                    st.close();
+	            		pstmt.close();
 	                    con.close();
 
 	            } catch (SQLException ex) {
@@ -151,6 +157,12 @@ public class parser implements ActionListener, Runnable {
 
 	private static boolean valid(String s) {
 		if (s.matches("javascript:.*|mailto:.*")) {
+			return false;
+		}
+		if (s.contains("#")) {
+			return false;
+		}
+		if (s.contains(":")) {
 			return false;
 		}
 		return true;
@@ -183,23 +195,16 @@ public class parser implements ActionListener, Runnable {
         Statement st = null;
         ResultSet rs = null;
 
-        String url = "jdbc:mysql://web02:3306/franklyn";
-        String user = "root";
-        String password = "r4pt0r";
-
         try {
             Class.forName("com.mysql.jdbc.Driver");
             Connection connection = null;
-            connection = DriverManager.getConnection("jdbc:mysql://www.db4free.net:3306/chatterbox", "hammale", "al3xander");
-            Statement statement = null;
-            statement = connection.createStatement();
+            connection = DriverManager.getConnection("jdbc:mysql://web02:3306/franklyn", "root", "r4pt0r");
             String select = "SELECT * FROM `used` WHERE `url`=" + s;
-            String sql = select;
-            rs = statement.executeQuery(sql);
+            pstmt = connection.prepareStatement(select);
+            rs = pstmt.executeQuery();
             connection.close();
             
             if (rs.next()) {
-                //System.out.println(rs.getString(1));
             	return false;
             }
 
