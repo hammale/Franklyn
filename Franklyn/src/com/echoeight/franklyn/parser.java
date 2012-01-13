@@ -1,6 +1,8 @@
 package com.echoeight.franklyn;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.*;
 import java.util.regex.Matcher;
@@ -9,6 +11,9 @@ import java.util.regex.Pattern;
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.AdjustmentEvent;
+import java.awt.event.AdjustmentListener;
+
 import javax.swing.*;
 
 public class parser implements ActionListener, Runnable {
@@ -18,7 +23,7 @@ public class parser implements ActionListener, Runnable {
 //	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
 //	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
 	
-	String urlinitial = "http://en.wikipedia.org/wiki/Main_Page";
+	String urlinitial = "http://google.com";
 	
 	JTextArea text;
 	JButton button;
@@ -33,15 +38,23 @@ public class parser implements ActionListener, Runnable {
 		JFrame frame = new JFrame();
 		JPanel panel = new JPanel();
 		button = new JButton("Start");
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		text = new JTextArea(40,40);
+		JScrollPane scrollPane = new JScrollPane(text);
 		button.addActionListener(this);
+		
+	    scrollPane.getVerticalScrollBar().addAdjustmentListener(new AdjustmentListener() {  
+	        public void adjustmentValueChanged(AdjustmentEvent e) {  
+	        e.getAdjustable().setValue(e.getAdjustable().getMaximum());  
+	        }});  
+		
 		text.setEditable(false);
 		
-		panel.add(text);
+		panel.add(scrollPane);
 		panel.add(button);
 		frame.add(BorderLayout.CENTER, panel);
 		
-		frame.setSize(40,100);
+		frame.setSize(100,100);
 		frame.setVisible(true);
 		
 	}
@@ -50,9 +63,9 @@ public class parser implements ActionListener, Runnable {
 		if(clear == true){
 			clear = false;
 			try {
-				
+				text.setText(null);
 			    Thread worker = new Thread(this);
-			    worker.start();  // this calls the method run()
+			    worker.start();
 				
 			} catch (Exception e1) {
 				e1.printStackTrace();
@@ -101,19 +114,26 @@ public class parser implements ActionListener, Runnable {
 			while (tagmatch.find()) {
 				Matcher matcher = link.matcher(tagmatch.group());
 				matcher.find();
-				String link = matcher.group().replaceFirst("href=\"", "")
-						.replaceFirst("\">", "");
+				String link = matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "");
 				if(valid(link)){
 					String end = makeAbsolute(domain, link);
 					end = end.replaceAll("\"", "");
 					end = end.replaceAll("class.+?", "");
 					end = end.replaceAll("tag.+?", "");
 					end = end.replaceAll("title.+?", "");
-					String daend = end.substring(0, end.indexOf(" "));
+					String daend = null;
+					if(end.contains(" ")){
+						daend = end.substring(0, end.indexOf(" "));
+					}else{
+						daend = end;
+					}
 					if(checkDB(daend)){
+						if(isOnline(daend)){
 						useLink(daend);
 						urlinitial = daend;
-						text.append(daend);
+						text.append(daend + "\n");
+						daend = null;
+						}
 					}
 				}
 			}
@@ -125,9 +145,7 @@ public class parser implements ActionListener, Runnable {
 	
 	private void useLink(String s) throws ClassNotFoundException {
 
-		 Connection con = null;
-	        Statement st = null;
-
+		 	Connection con = null;
 	        String url = "jdbc:mysql://web02:3306/franklyn";
 	        String user = "root";
 	        String password = "r4pt0r";
@@ -136,10 +154,10 @@ public class parser implements ActionListener, Runnable {
 	        	Class.forName("com.mysql.jdbc.Driver");
 	            con = DriverManager.getConnection(url, user, password);
 	            
-	            pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "\n" + "')");
-	            
-	            //String query = pstmt;
-	            pstmt.executeUpdate();
+	            if(s != null){
+	            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "\n" + "')");            
+	            	pstmt.executeUpdate();
+	            }	
 	            
 	        } catch (SQLException ex) {
 	        	ex.printStackTrace();
@@ -199,15 +217,17 @@ public class parser implements ActionListener, Runnable {
             Class.forName("com.mysql.jdbc.Driver");
             Connection connection = null;
             connection = DriverManager.getConnection("jdbc:mysql://web02:3306/franklyn", "root", "r4pt0r");
-            String select = "SELECT * FROM `used` WHERE `url`=" + s;
-            pstmt = connection.prepareStatement(select);
-            rs = pstmt.executeQuery();
-            connection.close();
-            
-            if (rs.next()) {
-            	return false;
+            if(s != null){
+            	String select = "SELECT * FROM `used` WHERE `url`='" + s + "'";
+            	pstmt = connection.prepareStatement(select);
+            	rs = pstmt.executeQuery();
             }
 
+            if(rs.next()) {
+                connection.close();          
+            	return false;
+            }
+            connection.close();           
             return true;
             
         } catch (SQLException ex) {
@@ -238,5 +258,17 @@ public class parser implements ActionListener, Runnable {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+    }
+    public boolean isOnline(String s) throws IOException{
+    	URL u = new URL (s);
+    	HttpURLConnection huc =  ( HttpURLConnection )  u.openConnection (); 
+    	huc.setRequestMethod ("GET");  //OR  huc.setRequestMethod ("HEAD"); 
+    	huc.connect () ; 
+    	int code = huc.getResponseCode() ;
+    	if(code == 200){
+    		return true;
+    	}else{
+        	return false;	
+    	}
     }
 }
