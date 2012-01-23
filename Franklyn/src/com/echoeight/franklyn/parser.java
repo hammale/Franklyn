@@ -5,6 +5,7 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,7 +21,7 @@ public class parser implements ActionListener, Runnable {
 
 //	private static final Pattern CHECK_LINK = Pattern.compile("^.+?<a href=");
 //	private static final Pattern CHECK_LINK2 = Pattern.compile("<.+?");
-//	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
+	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
 //	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
 	
 	String urlinitial = "http://test.com/";
@@ -28,6 +29,8 @@ public class parser implements ActionListener, Runnable {
 	JTextArea text;
 	JButton button;
 	boolean clear = true;
+	
+	ArrayList<String> words = new ArrayList<String>();
 	
     String url = "jdbc:mysql://web02:3306/franklyn";
     String user = "root";
@@ -112,7 +115,12 @@ public class parser implements ActionListener, Runnable {
 		
 		while (line != null) {
 			line = line.toLowerCase();
-			//String parsed = removeTags(line);
+			String parsed = removeTags(line);
+			String delims = " ";
+			String[] words = parsed.split(delims);
+		  	for(String s:words){
+		  		
+		  	}
 			//if(!(line.contains("<") || line.contains(">"))){
 			Matcher tagmatch = htmltag.matcher(line);
 			while (tagmatch.find()) {
@@ -152,6 +160,15 @@ public class parser implements ActionListener, Runnable {
 		}
 	}
 	
+public static String removeTags(String string) {
+    if (string == null || string.length() == 0) {
+        return string;
+    }
+    Matcher m = REMOVE_TAGS.matcher(string);
+    return m.replaceAll("");
+}
+
+
 	public void removeStops(String s){
 		
 	}
@@ -257,7 +274,7 @@ public class parser implements ActionListener, Runnable {
     public boolean isOnline(String s) throws IOException{
     	URL u = new URL (s);
     	HttpURLConnection huc =  ( HttpURLConnection )  u.openConnection (); 
-    	huc.setRequestMethod ("GET");  //OR  huc.setRequestMethod ("HEAD"); 
+    	huc.setRequestMethod ("GET");
     	huc.connect () ; 
     	int code = huc.getResponseCode() ;
     	if(code == 200){
