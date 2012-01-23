@@ -23,11 +23,15 @@ public class parser implements ActionListener, Runnable {
 //	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
 //	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
 	
-	String urlinitial = "http://google.com";
+	String urlinitial = "http://test.com/";
 	
 	JTextArea text;
 	JButton button;
 	boolean clear = true;
+	
+    String url = "jdbc:mysql://web02:3306/franklyn";
+    String user = "root";
+    String password = "r4pt0r";
 	
 	public static void main (String[] args){
 		parser gui = new parser();
@@ -114,6 +118,7 @@ public class parser implements ActionListener, Runnable {
 			while (tagmatch.find()) {
 				Matcher matcher = link.matcher(tagmatch.group());
 				matcher.find();
+				if(matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "") != null){
 				String link = matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "");
 				if(valid(link)){
 					String end = makeAbsolute(domain, link);
@@ -128,6 +133,9 @@ public class parser implements ActionListener, Runnable {
 						daend = end;
 					}
 					if(checkDB(daend)){
+						
+						removeStops(daend);
+						
 						if(isOnline(daend)){
 						useLink(daend);
 						urlinitial = daend;
@@ -137,18 +145,20 @@ public class parser implements ActionListener, Runnable {
 					}
 				}
 			}
+			}
 			//}
 			line = reader.readLine();
 		} 
 		}
 	}
 	
+	public void removeStops(String s){
+		
+	}
+	
 	private void useLink(String s) throws ClassNotFoundException {
 
 		 	Connection con = null;
-	        String url = "jdbc:mysql://web02:3306/franklyn";
-	        String user = "root";
-	        String password = "r4pt0r";
 
 	        try {        	
 	        	Class.forName("com.mysql.jdbc.Driver");
@@ -209,14 +219,12 @@ public class parser implements ActionListener, Runnable {
 	
     public boolean checkDB(String s) throws ClassNotFoundException{
 
-        Connection con = null;
-        Statement st = null;
         ResultSet rs = null;
 
         try {
             Class.forName("com.mysql.jdbc.Driver");
             Connection connection = null;
-            connection = DriverManager.getConnection("jdbc:mysql://web02:3306/franklyn", "root", "r4pt0r");
+            connection = DriverManager.getConnection(url, user, password);
             if(s != null){
             	String select = "SELECT * FROM `used` WHERE `url`='" + s + "'";
             	pstmt = connection.prepareStatement(select);
@@ -224,32 +232,19 @@ public class parser implements ActionListener, Runnable {
             }
 
             if(rs.next()) {
-                connection.close();          
+                connection.close();
+                rs.close();
             	return false;
+            }else{
+            	connection.close(); 
+            	rs.close();
+            	return true;
             }
-            connection.close();           
-            return true;
             
         } catch (SQLException ex) {
         	ex.printStackTrace();
-
-        } finally {
-            try {
-                if (rs != null) {
-                    rs.close();
-                }
-                if (st != null) {
-                    st.close();
-                }
-                if (con != null) {
-                    con.close();
-                }
-
-            } catch (SQLException ex) {
-            	ex.printStackTrace();
-            }
+        	return true;
         }
-        return true;
     }
 
     public void run(){
