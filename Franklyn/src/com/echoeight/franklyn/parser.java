@@ -2,10 +2,13 @@ package com.echoeight.franklyn;
 
 import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,13 +27,15 @@ public class parser implements ActionListener, Runnable {
 	private static final Pattern REMOVE_TAGS = Pattern.compile("<.+?>");
 //	private static final Pattern FIND_LINK = Pattern.compile("(?i).*<a");
 	
-	String urlinitial = "http://test.com/";
+	String urlinitial = "http://en.wikipedia.org/";
 	
 	JTextArea text;
 	JButton button;
 	boolean clear = true;
 	
-	ArrayList<String> words = new ArrayList<String>();
+	CopyOnWriteArrayList<String> pwords = new CopyOnWriteArrayList<String>();
+	CopyOnWriteArrayList<String> pfinal = new CopyOnWriteArrayList<String>();
+	CopyOnWriteArrayList<String> commons = new CopyOnWriteArrayList<String>();
 	
     String url = "jdbc:mysql://web02:3306/franklyn";
     String user = "root";
@@ -119,9 +124,13 @@ public class parser implements ActionListener, Runnable {
 			String delims = " ";
 			String[] words = parsed.split(delims);
 		  	for(String s:words){
-		  		
+		  		s.replace( '\'', ' ' );
+		  		s.replace( ',', '*' );
+		  		s.replace( '.', '*' );
+		  		s.replace( '/', '*' );
+		  		pwords.add(s);	  		
 		  	}
-			//if(!(line.contains("<") || line.contains(">"))){
+			removeStops();	
 			Matcher tagmatch = htmltag.matcher(line);
 			while (tagmatch.find()) {
 				Matcher matcher = link.matcher(tagmatch.group());
@@ -142,12 +151,11 @@ public class parser implements ActionListener, Runnable {
 					}
 					if(checkDB(daend)){
 						
-						removeStops(daend);
-						
 						if(isOnline(daend)){
 						useLink(daend);
 						urlinitial = daend;
 						text.append(daend + "\n");
+						pwords.clear();
 						daend = null;
 						}
 					}
@@ -169,8 +177,68 @@ public static String removeTags(String string) {
 }
 
 
-	public void removeStops(String s){
+	public void removeStops(){
+		for(String s : pwords){
+            	pfinal.add(s);
+            	findCommon();
+		}
+    	pwords.clear();
+    	pfinal.clear();
+    	commons.clear();
 		
+	}
+	
+	public void findCommon(){
+
+	    Set<String> hs = new HashSet<String>(pfinal);
+		int i = 1;
+		int high = 1;
+		String highs = null;
+		while(i <= 3){
+		    for(String s : hs){
+		    	int oc = Collections.frequency(pfinal, s);
+		    	if(oc > high){
+		    		high = oc;
+		    		highs = s;
+		    	}
+		    }
+	    	pfinal.remove(highs);
+	    	commons.add(highs);
+	    	high = 1;
+	    	highs = null;
+	    	i++;
+		}
+		try {
+			addCommons();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public void addCommons() throws ClassNotFoundException{
+	 	Connection con = null;
+        try {        	
+        	Class.forName("com.mysql.jdbc.Driver");
+            con = DriverManager.getConnection(url, user, password);
+            for(String s : commons){
+	            if(s != null){
+	            	System.out.println(s);
+	            	pstmt = con.prepareStatement("UPDATE `franklyn`.`used` SET `commons` = '" + s + "' WHERE `used`.`url` ='" + urlinitial + "'");            
+	            	pstmt.executeUpdate();
+	            	pstmt.close();
+	            }	
+            }
+            
+        } catch (SQLException ex) {
+        	ex.printStackTrace();
+
+        }
+            try {           	
+                con.close();
+
+            } catch (SQLException ex) {
+            	ex.printStackTrace();
+            }
 	}
 	
 	private void useLink(String s) throws ClassNotFoundException {
@@ -182,7 +250,7 @@ public static String removeTags(String string) {
 	            con = DriverManager.getConnection(url, user, password);
 	            
 	            if(s != null){
-	            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`) VALUES (NULL,'" + s + "\n" + "')");            
+	            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`, `commons`) VALUES (NULL,'" + s + "\n" + "','')");            
 	            	pstmt.executeUpdate();
 	            }	
 	            
@@ -243,7 +311,7 @@ public static String removeTags(String string) {
             Connection connection = null;
             connection = DriverManager.getConnection(url, user, password);
             if(s != null){
-            	String select = "SELECT * FROM `used` WHERE `url`='" + s + "'";
+            	String select = "SELECT url FROM `used` WHERE `url`='" + s + "'";
             	pstmt = connection.prepareStatement(select);
             	rs = pstmt.executeQuery();
             }
