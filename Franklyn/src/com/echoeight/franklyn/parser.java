@@ -7,6 +7,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
@@ -35,7 +36,8 @@ public class parser implements ActionListener, Runnable {
 	
 	CopyOnWriteArrayList<String> pwords = new CopyOnWriteArrayList<String>();
 	CopyOnWriteArrayList<String> pfinal = new CopyOnWriteArrayList<String>();
-	CopyOnWriteArrayList<String> commons = new CopyOnWriteArrayList<String>();
+	HashSet<String> commons = new HashSet<String>();
+	HashSet<String> links = new HashSet<String>();
 	
     String url = "jdbc:mysql://web02:3306/franklyn";
     String user = "root";
@@ -108,12 +110,21 @@ public class parser implements ActionListener, Runnable {
 
 	public void startCrawl() throws Exception{
 		while(clear == false){
-		URL url = new URL(urlinitial);
-		String domain =  url.getHost();
-		domain = "http://" + domain;
-		BufferedReader reader = read(urlinitial);
+		BufferedReader reader;
+		if(links.size() == 0){	
+			reader = read(urlinitial);
+		}else{
+			List<String> list = new ArrayList<String>(links);
+			String first = list.get(0);
+			urlinitial = first;
+			links.remove(first);
+			text.append(first + "\n");
+			pwords.clear();
+			list.clear();
+			reader = read(first);
+		}
+		System.out.println("Parsing: " + urlinitial);
 		String line = reader.readLine();
-
 
 		htmltag = Pattern.compile("<a\\b[^>]*href=\"[^>]*>(.*?)</a>");
 		link = Pattern.compile("href=\"[^>]*\">");
@@ -128,60 +139,88 @@ public class parser implements ActionListener, Runnable {
 		  		s.replace( ',', '*' );
 		  		s.replace( '.', '*' );
 		  		s.replace( '/', '*' );
-		  		pwords.add(s);	  		
+		  		s.replace( '&', '*' );
+		  		s.replace( '#', '*' );
+		  		s.replace( '(', '*' );
+		  		s.replace( ')', '*' );
+		  		s.replace( '%', '*' );
+		  		s.replace( '/', '*' );
+		  		s.replace( '+', '*' );
+		  		s.replace( '^', '*' );
+		  		s.replace( '$', '*' );
+		  		s.replace( '!', '*' );
+		  		s.replace( ';', '*' );
+		  		s.replace( ':', '*' );
+		  		s.replace( '"', '*' );
+		  		s.replace( '|', '*' );
+		  		s.replace( '{', '*' );
+		  		s.replace( '}', '*' );
+		  		s.replace( '[', '*' );
+		  		s.replace( ']', '*' );
+		  		s.replace( '.', '*' );
+		  		if(s.matches("^[a-zA-Z]+$")){
+		  			pwords.add(s);
+		  		}
+		  		
 		  	}
-			removeStops();	
-			Matcher tagmatch = htmltag.matcher(line);
-			while (tagmatch.find()) {
-				Matcher matcher = link.matcher(tagmatch.group());
-				matcher.find();
-				if(matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "") != null){
-				String link = matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "");
-				if(valid(link)){
-					String end = makeAbsolute(domain, link);
-					end = end.replaceAll("\"", "");
-					end = end.replaceAll("class.+?", "");
-					end = end.replaceAll("tag.+?", "");
-					end = end.replaceAll("title.+?", "");
-					String daend = null;
-					if(end.contains(" ")){
-						daend = end.substring(0, end.indexOf(" "));
-					}else{
-						daend = end;
-					}
-					if(checkDB(daend)){
-						
-						if(isOnline(daend)){
-						useLink(daend);
-						urlinitial = daend;
-						text.append(daend + "\n");
-						pwords.clear();
-						daend = null;
-						}
+			nextUrl(line);
+			//}
+			line = reader.readLine();
+		}
+		removeStops();
+		}
+		
+	}
+	
+	private void nextUrl(String line) throws ClassNotFoundException, IOException {
+		URL url = new URL(urlinitial);
+		String domain =  url.getHost();
+		domain = "http://" + domain;
+		Matcher tagmatch = htmltag.matcher(line);
+		while (tagmatch.find()) {
+			Matcher matcher = link.matcher(tagmatch.group());
+			matcher.matches();
+			matcher.find();
+			if(matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "") != null){
+			String link = matcher.group().replaceFirst("href=\"", "").replaceFirst("\">", "");
+			if(valid(link)){
+				String end = makeAbsolute(domain, link);
+				end = end.replaceAll("\"", "");
+				end = end.replaceAll("class.+?", "");
+				end = end.replaceAll("tag.+?", "");
+				end = end.replaceAll("title.+?", "");
+				String daend = null;
+				if(end.contains(" ")){
+					daend = end.substring(0, end.indexOf(" "));
+				}else{
+					daend = end;
+				}
+				if(checkDB(daend)){
+					
+					if(isOnline(daend)){
+					links.add(daend);
+					daend = null;
 					}
 				}
 			}
-			}
-			//}
-			line = reader.readLine();
-		} 
 		}
+		}		
+	}
+
+	public static String removeTags(String string) {
+	    if (string == null || string.length() == 0) {
+	        return string;
+	    }
+	    Matcher m = REMOVE_TAGS.matcher(string);
+	    m.matches();
+	    return m.replaceAll("");
 	}
 	
-public static String removeTags(String string) {
-    if (string == null || string.length() == 0) {
-        return string;
-    }
-    Matcher m = REMOVE_TAGS.matcher(string);
-    return m.replaceAll("");
-}
-
-
 	public void removeStops(){
 		for(String s : pwords){
             	pfinal.add(s);
-            	findCommon();
 		}
+    	findCommon();
     	pwords.clear();
     	pfinal.clear();
     	commons.clear();
@@ -189,18 +228,24 @@ public static String removeTags(String string) {
 	}
 	
 	public void findCommon(){
-
 	    Set<String> hs = new HashSet<String>(pfinal);
 		int i = 1;
-		int high = 1;
+		int high = 0;
 		String highs = null;
 		while(i <= 3){
 		    for(String s : hs){
-		    	int oc = Collections.frequency(pfinal, s);
-		    	if(oc > high){
-		    		high = oc;
-		    		highs = s;
-		    	}
+		    	try {
+					if(pullStops(s)){
+						int oc = Collections.frequency(pfinal, s);
+						System.out.println(oc);
+						if(oc > high){
+							high = oc;
+							highs = s;
+						}
+					}
+				} catch (ClassNotFoundException e) {
+					e.printStackTrace();
+				}
 		    }
 	    	pfinal.remove(highs);
 	    	commons.add(highs);
@@ -214,20 +259,49 @@ public static String removeTags(String string) {
 			e.printStackTrace();
 		}
 	}
+	
+	public boolean pullStops(String s) throws ClassNotFoundException{
+        ResultSet rs = null;
+        try {
+            Class.forName("com.mysql.jdbc.Driver");
+            Connection connection = null;
+            connection = DriverManager.getConnection(url, user, password);
+            if(s != null){
+            	String select = "SELECT word FROM `stop` WHERE `word`='" + s + "'";
+            	pstmt = connection.prepareStatement(select);
+            	rs = pstmt.executeQuery();
+            }
 
+            if(rs.first()) {
+                connection.close();
+                rs.close();
+            	return false;
+            }else{
+            	connection.close(); 
+            	rs.close();
+            	return true;
+            }
+            
+        } catch (SQLException ex) {
+        	ex.printStackTrace();
+        	return true;
+        }
+	}
+	
 	public void addCommons() throws ClassNotFoundException{
 	 	Connection con = null;
         try {        	
         	Class.forName("com.mysql.jdbc.Driver");
             con = DriverManager.getConnection(url, user, password);
-            for(String s : commons){
-	            if(s != null){
-	            	System.out.println(s);
-	            	pstmt = con.prepareStatement("UPDATE `franklyn`.`used` SET `commons` = '" + s + "' WHERE `used`.`url` ='" + urlinitial + "'");            
-	            	pstmt.executeUpdate();
-	            	pstmt.close();
+	            if(commons != null){
+	            		if(checkDB(urlinitial)){
+			            	System.out.println("Adding: " + commons);
+			            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`, `commons`) VALUES (NULL,'" + urlinitial + "\n" + "','" + commons + "')");            
+			            	pstmt.executeUpdate();
+			            	pstmt.close();
+			            	commons.clear();
+	            		}
 	            }	
-            }
             
         } catch (SQLException ex) {
         	ex.printStackTrace();
@@ -241,32 +315,32 @@ public static String removeTags(String string) {
             }
 	}
 	
-	private void useLink(String s) throws ClassNotFoundException {
-
-		 	Connection con = null;
-
-	        try {        	
-	        	Class.forName("com.mysql.jdbc.Driver");
-	            con = DriverManager.getConnection(url, user, password);
-	            
-	            if(s != null){
-	            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`, `commons`) VALUES (NULL,'" + s + "\n" + "','')");            
-	            	pstmt.executeUpdate();
-	            }	
-	            
-	        } catch (SQLException ex) {
-	        	ex.printStackTrace();
-
-	        } finally {
-	            try {
-	            		pstmt.close();
-	                    con.close();
-
-	            } catch (SQLException ex) {
-	            	ex.printStackTrace();
-	            }
-	        }
-	}
+//	private void useLink(String s) throws ClassNotFoundException {
+//
+//		 	Connection con = null;
+//
+//	        try {        	
+//	        	Class.forName("com.mysql.jdbc.Driver");
+//	            con = DriverManager.getConnection(url, user, password);
+//	            
+//	            if(s != null){
+//	            	pstmt = con.prepareStatement("INSERT INTO `used`(`id`, `url`, `commons`) VALUES (NULL,'" + s + "\n" + "','')");            
+//	            	pstmt.executeUpdate();
+//	            }	
+//	            
+//	        } catch (SQLException ex) {
+//	        	ex.printStackTrace();
+//
+//	        } finally {
+//	            try {
+//	            		pstmt.close();
+//	                    con.close();
+//
+//	            } catch (SQLException ex) {
+//	            	ex.printStackTrace();
+//	            }
+//	        }
+//	}
 
 	private static boolean valid(String s) {
 		if (s.matches("javascript:.*|mailto:.*")) {
@@ -302,10 +376,8 @@ public static String removeTags(String string) {
 	}
 	
 	
-    public boolean checkDB(String s) throws ClassNotFoundException{
-
+    public boolean checkDB(String s) throws ClassNotFoundException {
         ResultSet rs = null;
-
         try {
             Class.forName("com.mysql.jdbc.Driver");
             Connection connection = null;
@@ -316,7 +388,7 @@ public static String removeTags(String string) {
             	rs = pstmt.executeQuery();
             }
 
-            if(rs.next()) {
+            if(rs.first()) {
                 connection.close();
                 rs.close();
             	return false;
